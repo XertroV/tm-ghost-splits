@@ -249,7 +249,7 @@ void RenderInterface() {
 
                     UI::TableNextColumn();
                     if (UI::Button(Icons::TrashO)) {
-                        deletedGhosts[g.IdName] = true;
+                        HideGhostFromList(g);
                     }
 
                     UI::PopID();
@@ -263,6 +263,17 @@ void RenderInterface() {
     // need to keep this in sync with early return point: CollapseMainUI
     UI::End();
     UI::PopFont();
+}
+
+
+void HideGhostFromList(const MLFeed::GhostInfo@ g) {
+    auto gd = MLFeed::GetGhostData();
+    for (uint i = 0; i < gd.Ghosts.Length; i++) {
+        if (AreGhostDupliates(g, gd.Ghosts[i])) {
+            deletedGhosts[gd.Ghosts[i].IdName] = true;
+        }
+
+    }
 }
 
 
