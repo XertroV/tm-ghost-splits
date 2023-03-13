@@ -79,6 +79,7 @@ void WatchForReset() {
         if (lastNbGhosts != gd.NbGhosts && gd.NbGhosts == 0) {
             @relativeTo = null;
             @spectating = null;
+            deletedGhosts.DeleteAll();
         }
         lastNbGhosts = gd.NbGhosts;
     }
@@ -99,6 +100,8 @@ void IncrFontSize() {
 void DecrFontSize() {
     fontSizeIx = Math::Clamp(fontSizeIx - 1, 0, g_fonts.Length - 1);
 }
+
+dictionary deletedGhosts;
 
 void RenderInterface() {
     if (!ShowWindow) return;
@@ -123,6 +126,10 @@ void RenderInterface() {
         if (UI::Button("-")) {
             DecrFontSize();
         }
+        UI::SameLine();
+        if (UI::Button(Icons::Refresh + Icons::TrashO)) {
+            deletedGhosts.DeleteAll();
+        }
 
         if (CollapseMainUI) {
             UI::End();
@@ -137,11 +144,17 @@ void RenderInterface() {
             UI::Text("Load some ghosts to view times.\n(Toggle the ghost if it doesn't show up.)");
             UI::Text("\\$888Alternatively: this might show if the first ghost has 0 checkpoint times.");
         } else {
-            auto best = gd.Ghosts[0];
-            array<const MLFeed::GhostInfo@> sorted = {best};
+            const MLFeed::GhostInfo@ best = null;
+            array<const MLFeed::GhostInfo@> sorted = {};
             // uint lastCpIx = best.Checkpoints.Length - 1;
-            for (uint i = 1; i < gd.Ghosts.Length; i++) {
+            for (uint i = 0; i < gd.Ghosts.Length; i++) {
                 auto g = gd.Ghosts[i];
+                if (deletedGhosts.Exists(g.IdName)) continue;
+                if (best is null) {
+                    @best = g;
+                    sorted.InsertLast(g);
+                }
+
                 auto g2 = gd.Ghosts_V2[i];
                 if (spectating is null && (g2.IsLocalPlayer || g2.IsPersonalBest)) {
                     @spectating = g;
@@ -175,18 +188,18 @@ void RenderInterface() {
             ShowAllCpSplits = UI::Checkbox("Show All CP Splits", ShowAllCpSplits);
             ShowSplitDeltasInstead = UI::Checkbox("Show Gain/Loss", ShowSplitDeltasInstead);
 
-            uint nbCols = 1 + (ShowAllCpSplits ? best.Checkpoints.Length : 1);
+            uint nbCols = 2 + (ShowAllCpSplits ? best.Checkpoints.Length : 1);
 
             int currTime = int(pgScript.Now) - g_LastSetStartTime;
 
             uint currCp = 0;
             for (uint i = 0; i < relativeTo.Checkpoints.Length; i++) {
-                if (relativeTo.Checkpoints[i] <= currTime) currCp = i;
+                if (int(relativeTo.Checkpoints[i]) <= currTime) currCp = i;
                 else break;
             }
             uint specCp = 0;
             for (uint i = 0; i < spectating.Checkpoints.Length; i++) {
-                if (spectating.Checkpoints[i] <= currTime) specCp = i;
+                if (int(spectating.Checkpoints[i]) <= currTime) specCp = i;
                 else break;
             }
 
@@ -233,6 +246,12 @@ void RenderInterface() {
                         }
                         lastDelta = t - bestT;
                     }
+
+                    UI::TableNextColumn();
+                    if (UI::Button(Icons::TrashO)) {
+                        deletedGhosts[g.IdName] = true;
+                    }
+
                     UI::PopID();
                 }
 
@@ -264,9 +283,9 @@ void Render() {
     int refCp = 0;
     int specCp = 0;
 
-    if (currTime >= spectating.Checkpoints[0]) {
+    if (currTime >= int(spectating.Checkpoints[0])) {
         for (uint i = 0; i < relativeTo.Checkpoints.Length; i++) {
-            if (spectating.Checkpoints[i] <= currTime) {
+            if (int(spectating.Checkpoints[i]) <= currTime) {
                 specCp = spectating.Checkpoints[i];
                 refCp = relativeTo.Checkpoints[i];
                 currCp = i;
@@ -298,7 +317,7 @@ vec4 GetBufColor(int target, int spec) {
 }
 
 
-int g_font = nvg::LoadFont("DroidSans-Bold.ttf");
+int g_nvgFont = nvg::LoadFont("DroidSans-Bold.ttf");
 const float TAU = 6.283185307179586;
 
 void DrawNvgText(const string &in toDraw, const vec4 &in bufColor, bool isSecondary = false) {
@@ -307,7 +326,7 @@ void DrawNvgText(const string &in toDraw, const vec4 &in bufColor, bool isSecond
     float fontSize = screen.y * 0.05;
     float sw = fontSize * 0.11;
 
-    nvg::FontFace(g_font);
+    nvg::FontFace(g_nvgFont);
     nvg::FontSize(fontSize);
     nvg::TextAlign(nvg::Align::Center | nvg::Align::Middle);
     // auto sizeWPad = nvg::TextBounds(toDraw.SubStr(0, toDraw.Length - 3) + "000") + vec2(20, 10);
@@ -340,9 +359,8 @@ void DrawNvgTitle(const string &in toDraw, const vec4 &in bufColor = vec4(1, 1, 
     auto screen = vec2(Draw::GetWidth(), Draw::GetHeight());
     vec2 pos = (screen * vec2(0.5, 0.05));
     float fontSize = screen.y * 0.04;
-    float sw = fontSize * 0.11;
 
-    nvg::FontFace(g_font);
+    nvg::FontFace(g_nvgFont);
     nvg::FontSize(fontSize);
     nvg::TextAlign(nvg::Align::Center | nvg::Align::Middle);
 
