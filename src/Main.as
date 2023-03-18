@@ -68,8 +68,12 @@ bool ShowAllCpSplits = false;
 [Setting hidden]
 bool ShowSplitDeltasInstead = false;
 
-const MLFeed::GhostInfo@ relativeTo = null;
-const MLFeed::GhostInfo@ spectating = null;
+[Setting hidden]
+bool S_LoadedGhostsOnly = true;
+
+const MLFeed::GhostInfo_V2@ relativeTo = null;
+const MLFeed::GhostInfo_V2@ spectating = null;
+const MLFeed::GhostInfo_V2@ bestGhost = null;
 
 void WatchForReset() {
     auto gd = MLFeed::GetGhostData();
@@ -79,11 +83,62 @@ void WatchForReset() {
         if (lastNbGhosts != gd.NbGhosts && gd.NbGhosts == 0) {
             @relativeTo = null;
             @spectating = null;
+            @bestGhost = null;
             deletedGhosts.DeleteAll();
         }
         lastNbGhosts = gd.NbGhosts;
     }
 }
+
+array<const MLFeed::GhostInfo_V2@>@ UpdateGhosts() {
+    auto gd = MLFeed::GetGhostData();
+    array<const MLFeed::GhostInfo_V2@> sorted = {};
+    auto sourceGhosts = S_LoadedGhostsOnly ? gd.LoadedGhosts : gd.SortedGhosts;
+    if (sourceGhosts.Length < 1) return sorted;
+    if (sourceGhosts.Length < 2) return {sourceGhosts[0]};
+
+    bool isInit = spectating is null && relativeTo is null;
+
+    for (uint i = 0; i < sourceGhosts.Length; i++) {
+        auto g = sourceGhosts[i];
+        if (deletedGhosts.Exists(g.IdName)) continue;
+        if (bestGhost is null) {
+            @bestGhost = g;
+            sorted.InsertLast(g);
+        }
+
+        if (spectating is null && (g.IsLocalPlayer || g.IsPersonalBest)) {
+            @spectating = g;
+        }
+        if (g.Result_Time < bestGhost.Result_Time) {
+            @bestGhost = g;
+        }
+        bool inserted = false;
+        for (uint j = 0; j < sorted.Length; j++) {
+            auto item = sorted[j];
+            if (g.Result_Time < item.Result_Time) {
+                sorted.InsertAt(j, g);
+                inserted = true;
+                break;
+            } else if (AreGhostDupliates(g, item)) {
+                inserted = true;
+                break;
+            }
+        }
+        // if we haven't yet inserted a ghost to sorted
+        if (!inserted) {
+            sorted.InsertLast(g);
+        }
+    }
+
+    if (relativeTo is null) @relativeTo = bestGhost;
+    if (spectating is null) @spectating = relativeTo;
+    if (isInit && AreGhostDupliates(relativeTo, sorted[0])) {
+        @spectating = sorted[sorted.Length - 1];
+    };
+    return sorted;
+}
+
 
 bool CollapseMainUI = false;
 
@@ -104,7 +159,6 @@ void DecrFontSize() {
 dictionary deletedGhosts;
 
 void RenderInterface() {
-    if (!ShowWindow) return;
     // UI Seq is end round when ghosts are being spectated.
     if (!IsUiSeqEndRound) return;
     auto pgScript = cast<CSmArenaRulesMode>(GetApp().PlaygroundScript);
@@ -112,7 +166,9 @@ void RenderInterface() {
     auto map = GetApp().RootMap;
     if (map is null) return;
 
-    auto gd = MLFeed::GetGhostData();
+    // run update ghosts once before exiting when ghosts aren't set so that it shows up by default when overlay is hidden.
+    if (!ShowWindow) return;
+
     UI::PushFont(g_fonts[Math::Clamp(fontSizeIx, 0, g_fonts.Length - 1)]);
     if (UI::Begin(MenuTitle, ShowWindow, UI::WindowFlags::AlwaysAutoResize | UI::WindowFlags::NoCollapse)) {
         if (UI::Button(CollapseMainUI ? "Expand" : "Collapse")) {
@@ -137,58 +193,26 @@ void RenderInterface() {
             return;
         }
 
+        auto sorted = UpdateGhosts();
+
         // UI::AlignTextToFramePadding();
         UI::Text(ColoredString(map.MapName) + "\\$z by " + map.AuthorNickName);
-        UI::Text("Nb. Ghosts: " + gd.NbGhosts);
-        if (gd.NbGhosts == 0 || gd.Ghosts[0].Checkpoints.Length == 0) {
+        UI::Text("Nb. Ghosts: " + sorted.Length);
+        if (sorted.Length == 0 || sorted[0].Checkpoints.Length == 0) {
             UI::Text("Load some ghosts to view times.\n(Toggle the ghost if it doesn't show up.)");
             UI::Text("\\$888Alternatively: this might show if the first ghost has 0 checkpoint times.");
         } else {
-            const MLFeed::GhostInfo@ best = null;
-            array<const MLFeed::GhostInfo@> sorted = {};
-            // uint lastCpIx = best.Checkpoints.Length - 1;
-            for (uint i = 0; i < gd.Ghosts.Length; i++) {
-                auto g = gd.Ghosts[i];
-                if (deletedGhosts.Exists(g.IdName)) continue;
-                if (best is null) {
-                    @best = g;
-                    sorted.InsertLast(g);
-                }
-
-                auto g2 = gd.Ghosts_V2[i];
-                if (spectating is null && (g2.IsLocalPlayer || g2.IsPersonalBest)) {
-                    @spectating = g;
-                }
-                if (g.Result_Time < best.Result_Time) {
-                    @best = g;
-                }
-                bool inserted = false;
-                for (uint j = 0; j < sorted.Length; j++) {
-                    auto item = sorted[j];
-                    if (g.Result_Time < item.Result_Time) {
-                        sorted.InsertAt(j, g);
-                        inserted = true;
-                        break;
-                    } else if (AreGhostDupliates(g, item)) {
-                        inserted = true;
-                        break;
-                    }
-                }
-                // if we haven't yet inserted a ghost to sorted
-                if (!inserted) {
-                    sorted.InsertLast(g);
-                }
-            }
-
-            if (relativeTo is null) @relativeTo = best;
-            if (spectating is null) @spectating = relativeTo;
 
             UI::SameLine();
-            UI::Text("/   Best: " + best.Nickname + " (" + Time::Format(best.Result_Time) + ")");
+            UI::Text("/   Best: " + bestGhost.Nickname + " (" + Time::Format(bestGhost.Result_Time) + ")");
             ShowAllCpSplits = UI::Checkbox("Show All CP Splits", ShowAllCpSplits);
+            // UI::SameLine();
             ShowSplitDeltasInstead = UI::Checkbox("Show Gain/Loss", ShowSplitDeltasInstead);
+            // UI::SameLine();
+            S_LoadedGhostsOnly = UI::Checkbox("Show only Loaded Ghosts", S_LoadedGhostsOnly);
+            AddSimpleTooltip("If disabled, any ghost previously loaded during this session will be available.");
 
-            uint nbCols = 2 + (ShowAllCpSplits ? best.Checkpoints.Length : 1);
+            uint nbCols = 2 + (ShowAllCpSplits ? bestGhost.Checkpoints.Length : 1);
 
             int currTime = int(pgScript.Now) - g_LastSetStartTime;
 
@@ -278,10 +302,17 @@ void HideGhostFromList(const MLFeed::GhostInfo@ g) {
 
 
 void Render() {
-    if (!ShowWindow) return;
     if (!IsUiSeqEndRound) return;
     auto pgScript = cast<CSmArenaRulesMode>(GetApp().PlaygroundScript);
     if (pgScript is null) return;
+
+    if (!ShowWindow) return;
+
+    auto gd = MLFeed::GetGhostData();
+    if ((relativeTo is null || spectating is null || bestGhost is null) && gd.NbGhosts >= 2) {
+        UpdateGhosts();
+    }
+
     if (relativeTo is null || spectating is null) return;
     if (relativeTo == spectating) return;
 
