@@ -201,8 +201,7 @@ void RenderInterface() {
         if (sorted.Length == 0 || sorted[0].Checkpoints.Length == 0) {
             UI::Text("Load some ghosts to view times.\n(Toggle the ghost if it doesn't show up.)");
             UI::Text("\\$888Alternatively: this might show if the first ghost has 0 checkpoint times.");
-        } else {
-
+        } else if (bestGhost !is null) {
             UI::SameLine();
             UI::Text("/   Best: " + bestGhost.Nickname + " (" + Time::Format(bestGhost.Result_Time) + ")");
             ShowAllCpSplits = UI::Checkbox("Show All CP Splits", ShowAllCpSplits);
