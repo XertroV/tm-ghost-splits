@@ -159,8 +159,7 @@ void DecrFontSize() {
 dictionary deletedGhosts;
 
 void RenderInterface() {
-    // UI Seq is end round when ghosts are being spectated.
-    if (!IsUiSeqEndRound) return;
+    if (!IsWatchingGhost) return;
     auto pgScript = cast<CSmArenaRulesMode>(GetApp().PlaygroundScript);
     if (pgScript is null) return;
     auto map = GetApp().RootMap;
@@ -301,7 +300,7 @@ void HideGhostFromList(const MLFeed::GhostInfo@ g) {
 
 
 void Render() {
-    if (!IsUiSeqEndRound) return;
+    if (!IsWatchingGhost) return;
     auto pgScript = cast<CSmArenaRulesMode>(GetApp().PlaygroundScript);
     if (pgScript is null) return;
 
@@ -437,16 +436,22 @@ bool AreGhostDupliates(const MLFeed::GhostInfo@ g, const MLFeed::GhostInfo@ othe
 }
 
 
-bool IsUiSeqEndRound {
+bool IsWatchingGhost {
     get {
         try {
             auto gameTerm = cast<CSmArenaClient>(GetApp().CurrentPlayground).GameTerminals[0];
-            return gameTerm.UISequence_Current == SGamePlaygroundUIConfig::EUISequence::EndRound;
+            auto viewingEntityOffset = 0x100;
+            bool isWatching = Dev::GetOffsetUint8(gameTerm, viewingEntityOffset) == 0x1;
+            bool entIdOkay = Dev::GetOffsetUint32(gameTerm, viewingEntityOffset + 0x4) & 0x04000000 > 0;
+            bool uiSeqOkay = gameTerm.UISequence_Current == SGamePlaygroundUIConfig::EUISequence::EndRound
+                || gameTerm.UISequence_Current == SGamePlaygroundUIConfig::EUISequence::UIInteraction;
+            return isWatching && entIdOkay && uiSeqOkay;
         } catch {
             return false;
         }
     }
 }
+
 
 void AddSimpleTooltip(const string &in msg) {
     if (UI::IsItemHovered()) {
