@@ -438,17 +438,9 @@ bool AreGhostDupliates(const MLFeed::GhostInfo@ g, const MLFeed::GhostInfo@ othe
 
 bool IsWatchingGhost {
     get {
-        try {
-            auto gameTerm = cast<CSmArenaClient>(GetApp().CurrentPlayground).GameTerminals[0];
-            auto viewingEntityOffset = 0x100;
-            bool isWatching = Dev::GetOffsetUint8(gameTerm, viewingEntityOffset) == 0x1;
-            bool entIdOkay = Dev::GetOffsetUint32(gameTerm, viewingEntityOffset + 0x4) & 0x04000000 > 0;
-            bool uiSeqOkay = gameTerm.UISequence_Current == SGamePlaygroundUIConfig::EUISequence::EndRound
-                || gameTerm.UISequence_Current == SGamePlaygroundUIConfig::EUISequence::UIInteraction;
-            return isWatching && entIdOkay && uiSeqOkay;
-        } catch {
-            return false;
-        }
+        auto ps = GetApp().PlaygroundScript;
+        if (ps is null || ps.UIManager is null) return false;
+        return ps.UIManager.UIAll.ForceSpectator;
     }
 }
 
