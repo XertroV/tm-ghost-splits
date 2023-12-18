@@ -161,7 +161,6 @@ dictionary deletedGhosts;
 void RenderInterface() {
     if (!IsWatchingGhost) return;
     auto pgScript = cast<CSmArenaRulesMode>(GetApp().PlaygroundScript);
-    if (pgScript is null) return;
     auto map = GetApp().RootMap;
     if (map is null) return;
 
@@ -294,7 +293,6 @@ void HideGhostFromList(const MLFeed::GhostInfo@ g) {
         if (AreGhostDupliates(g, gd.Ghosts[i])) {
             deletedGhosts[gd.Ghosts[i].IdName] = true;
         }
-
     }
 }
 
