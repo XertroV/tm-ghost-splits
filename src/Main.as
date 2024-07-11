@@ -104,7 +104,7 @@ class GhostInfo {
         Nickname = g.Nickname;
         Result_Time = g.Result_Time;
         Result_Score = g.Result_Score;
-        Checkpoints = g.Checkpoints;
+        Checkpoints = UintArrToInt(g.Checkpoints);
         IsLocalPlayer = g.IsLocalPlayer;
         IsPersonalBest = g.IsPersonalBest;
     }
@@ -524,6 +524,24 @@ bool AreGhostDupliates(GhostInfo@ g, GhostInfo@ other) {
     return isEqNoCps;
 }
 
+#if DEPENDENCY_MLFEEDRACEDATA
+bool AreGhostDupliates(GhostInfo@ g, const MLFeed::GhostInfo@ other) {
+    if (g is null || other is null) return false;
+    bool isEqNoCps = true
+        && g.Nickname == other.Nickname
+        && g.Result_Score == other.Result_Score
+        && g.Result_Time == other.Result_Time
+        && g.Checkpoints.Length == other.Checkpoints.Length
+        ;
+    if (isEqNoCps) {
+        for (uint i = 0; i < g.Checkpoints.Length; i++) {
+            if (g.Checkpoints[i] != int(other.Checkpoints[i]))
+                return false;
+        }
+    }
+    return isEqNoCps;
+}
+#endif
 
 bool IsWatchingGhost {
     get {
@@ -540,4 +558,13 @@ void AddSimpleTooltip(const string &in msg) {
         UI::Text(msg);
         UI::EndTooltip();
     }
+}
+
+
+int[]@ UintArrToInt(const uint[]@ arr) {
+    int[]@ ret = {};
+    for (uint i = 0; i < arr.Length; i++) {
+        ret.InsertLast(int(arr[i]));
+    }
+    return ret;
 }
