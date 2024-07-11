@@ -71,36 +71,123 @@ bool ShowSplitDeltasInstead = false;
 [Setting hidden]
 bool S_LoadedGhostsOnly = true;
 
-const MLFeed::GhostInfo_V2@ relativeTo = null;
-const MLFeed::GhostInfo_V2@ spectating = null;
-const MLFeed::GhostInfo_V2@ bestGhost = null;
+
+
+class GhostInfo {
+    string IdName;
+    string Nickname;
+    int Result_Time;
+    int Result_Score;
+    int[] Checkpoints;
+    bool IsLocalPlayer;
+    bool IsPersonalBest;
+#if DEPENDENCY_GHOSTS_PP
+    GhostInfo(NGameGhostClips_SClipPlayerGhost@ g, uint i) {
+        IdName = "#raw-" + i;
+        Nickname = g.GhostModel.GhostNickname;
+        Result_Time = g.GhostModel.RaceTime;
+        Result_Score = g.GhostModel.StuntsScore;
+        _SetCpsFromCtnGhost(g.GhostModel);
+        IsLocalPlayer = g.GhostModel.GhostLogin == GetApp().LocalPlayerInfo.Login;
+        IsPersonalBest = g.GhostModel.GhostNickname.EndsWith("Personal Best");
+    }
+
+    private void _SetCpsFromCtnGhost(CGameCtnGhost@ g) {
+        auto cps = Ghosts_PP::GetGhostCheckpoints(g);
+        for (uint i = 0; i < cps.Length; i++) {
+            Checkpoints.InsertLast(cps[i].Time);
+        }
+    }
+#elif DEPENDENCY_MLFEEDRACEDATA
+    GhostInfo(const MLFeed::GhostInfo_V2@ g) {
+        IdName = g.IdName;
+        Nickname = g.Nickname;
+        Result_Time = g.Result_Time;
+        Result_Score = g.Result_Score;
+        Checkpoints = g.Checkpoints;
+        IsLocalPlayer = g.IsLocalPlayer;
+        IsPersonalBest = g.IsPersonalBest;
+    }
+#endif
+
+    bool opEquals(const GhostInfo@ other) const {
+        bool ret = IdName == other.IdName
+            && Nickname == other.Nickname
+            && Result_Time == other.Result_Time
+            && Result_Score == other.Result_Score
+            && IsLocalPlayer == other.IsLocalPlayer
+            && Checkpoints.Length == other.Checkpoints.Length
+            ;
+        if (ret) {
+            for (uint i = 0; i < Checkpoints.Length; i++) {
+                if (Checkpoints[i] != other.Checkpoints[i]) return false;
+            }
+        }
+        return ret;
+    }
+}
+
+
+
+GhostInfo@ relativeTo = null;
+GhostInfo@ spectating = null;
+GhostInfo@ bestGhost = null;
 
 void WatchForReset() {
-    auto gd = MLFeed::GetGhostData();
-    auto lastNbGhosts = gd.NbGhosts;
+    uint lastNbGhosts = 0, nbGhosts = 0;
+#if DEPENDENCY_GHOSTS_PP
+    auto ghostMgr = Ghosts_PP::GetGhostClipsMgr(GetApp());
+    if (ghostMgr !is null) nbGhosts = ghostMgr.Ghosts.Length;
+#elif DEPENDENCY_MLFEEDRACEDATA
+    nbGhosts = MLFeed::GetGhostData().NbGhosts;
+#endif
+    lastNbGhosts = nbGhosts;
     while (true) {
+#if DEPENDENCY_GHOSTS_PP
+        if (ghostMgr !is null) nbGhosts = ghostMgr.Ghosts.Length;
+#elif DEPENDENCY_MLFEEDRACEDATA
+        nbGhosts = MLFeed::GetGhostData().NbGhosts;
+#endif
         yield();
-        if (lastNbGhosts != gd.NbGhosts && gd.NbGhosts == 0) {
+        if (lastNbGhosts != nbGhosts && nbGhosts == 0) {
             @relativeTo = null;
             @spectating = null;
             @bestGhost = null;
             deletedGhosts.DeleteAll();
         }
-        lastNbGhosts = gd.NbGhosts;
+        lastNbGhosts = nbGhosts;
     }
 }
 
-array<const MLFeed::GhostInfo_V2@>@ UpdateGhosts() {
-    auto gd = MLFeed::GetGhostData();
-    array<const MLFeed::GhostInfo_V2@> sorted = {};
-    auto sourceGhosts = S_LoadedGhostsOnly ? gd.LoadedGhosts : gd.SortedGhosts;
+array<GhostInfo@>@ UpdateGhosts() {
+    array<GhostInfo@> sorted = {};
+#if DEPENDENCY_GHOSTS_PP
+    auto ghostMgr = Ghosts_PP::GetGhostClipsMgr(GetApp());
+    if (ghostMgr is null) return sorted;
+    if (ghostMgr.Ghosts.Length < 1) return sorted;
+    if (ghostMgr.Ghosts.Length < 2) return {GhostInfo(ghostMgr.Ghosts[0], 0)};
+    GhostInfo@[] sourceGhosts;
+    for (uint i = 0; i < ghostMgr.Ghosts.Length; i++) {
+        sourceGhosts.InsertLast(GhostInfo(ghostMgr.Ghosts[i], i));
+    }
+#elif DEPENDENCY_MLFEEDRACEDATA
+    auto @gd = MLFeed::GetGhostData();
+    auto @sourceGhosts = S_LoadedGhostsOnly ? gd.LoadedGhosts : gd.SortedGhosts;
     if (sourceGhosts.Length < 1) return sorted;
-    if (sourceGhosts.Length < 2) return {sourceGhosts[0]};
+    if (sourceGhosts.Length < 2) return {GhostInfo(sourceGhosts[0])};
+#else
+    return {};
+#endif
 
     bool isInit = spectating is null && relativeTo is null;
 
+    GhostInfo@ g;
     for (uint i = 0; i < sourceGhosts.Length; i++) {
-        auto g = sourceGhosts[i];
+#if DEPENDENCY_GHOSTS_PP
+        @g = sourceGhosts[i];
+#elif DEPENDENCY_MLFEEDRACEDATA
+        @g = GhostInfo(sourceGhosts[i]);
+#endif
         if (deletedGhosts.Exists(g.IdName)) continue;
         if (bestGhost is null) {
             @bestGhost = g;
@@ -194,7 +281,7 @@ void RenderInterface() {
         auto sorted = UpdateGhosts();
 
         // UI::AlignTextToFramePadding();
-        UI::Text(ColoredString(map.MapName) + "\\$z by " + map.AuthorNickName);
+        UI::Text(Text::OpenplanetFormatCodes(map.MapName) + "\\$z by " + map.AuthorNickName);
         UI::Text("Nb. Ghosts: " + sorted.Length);
         if (sorted.Length == 0 || sorted[0].Checkpoints.Length == 0) {
             UI::Text("Load some ghosts to view times.\n(Toggle the ghost if it doesn't show up.)");
@@ -248,8 +335,8 @@ void RenderInterface() {
                     }
                     AddSimpleTooltip("Select Spectating Ghost");
                     UI::SameLine();
-                    bool isFocusGhost = relativeTo == g;
-                    bool isSpecGhost = spectating == g;
+                    bool isFocusGhost = relativeTo is g;
+                    bool isSpecGhost = spectating is g;
                     UI::AlignTextToFramePadding();
                     UI::Text((isFocusGhost ? "\\$4f4" : isSpecGhost ? "\\$48f" : "") + g.Nickname);
 
@@ -287,13 +374,17 @@ void RenderInterface() {
 }
 
 
-void HideGhostFromList(const MLFeed::GhostInfo@ g) {
+void HideGhostFromList(GhostInfo@ g) {
+#if DEPENDENCY_GHOSTS_PP
+    deletedGhosts[g.IdName] = true;
+#elif DEPENDENCY_MLFEEDRACEDATA
     auto gd = MLFeed::GetGhostData();
     for (uint i = 0; i < gd.Ghosts.Length; i++) {
         if (AreGhostDupliates(g, gd.Ghosts[i])) {
             deletedGhosts[gd.Ghosts[i].IdName] = true;
         }
     }
+#endif
 }
 
 
@@ -416,7 +507,7 @@ const string TimeDelta(int baseTime, int secTime, bool withColor = false) {
 }
 
 
-bool AreGhostDupliates(const MLFeed::GhostInfo@ g, const MLFeed::GhostInfo@ other) {
+bool AreGhostDupliates(GhostInfo@ g, GhostInfo@ other) {
     if (g is null || other is null) return false;
     bool isEqNoCps = true
         && g.Nickname == other.Nickname

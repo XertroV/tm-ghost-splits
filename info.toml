@@ -6,4 +6,4 @@ version  = "0.1.8"
 
 [script]
 #__DEFINES__
-dependencies = ["MLHook", "MLFeedRaceData"]
+optional_dependencies = ["ghosts-pp", "MLHook", "MLFeedRaceData"]
