@@ -134,28 +134,14 @@ GhostInfo@ spectating = null;
 GhostInfo@ bestGhost = null;
 
 void WatchForReset() {
-    uint lastNbGhosts = 0, nbGhosts = 0;
-#if DEPENDENCY_GHOSTS_PP
-    auto ghostMgr = Ghosts_PP::GetGhostClipsMgr(GetApp());
-    if (ghostMgr !is null) nbGhosts = ghostMgr.Ghosts.Length;
-#elif DEPENDENCY_MLFEEDRACEDATA
-    nbGhosts = MLFeed::GetGhostData().NbGhosts;
-#endif
-    lastNbGhosts = nbGhosts;
     while (true) {
-#if DEPENDENCY_GHOSTS_PP
-        if (ghostMgr !is null) nbGhosts = ghostMgr.Ghosts.Length;
-#elif DEPENDENCY_MLFEEDRACEDATA
-        nbGhosts = MLFeed::GetGhostData().NbGhosts;
-#endif
         yield();
-        if (lastNbGhosts != nbGhosts && nbGhosts == 0) {
+        if (GetApp().CurrentPlayground is null) {
             @relativeTo = null;
             @spectating = null;
             @bestGhost = null;
             deletedGhosts.DeleteAll();
         }
-        lastNbGhosts = nbGhosts;
     }
 }
 
@@ -335,8 +321,8 @@ void RenderInterface() {
                     }
                     AddSimpleTooltip("Select Spectating Ghost");
                     UI::SameLine();
-                    bool isFocusGhost = relativeTo is g;
-                    bool isSpecGhost = spectating is g;
+                    bool isFocusGhost = AreGhostDupliates(relativeTo, g);
+                    bool isSpecGhost = AreGhostDupliates(spectating, g);
                     UI::AlignTextToFramePadding();
                     UI::Text((isFocusGhost ? "\\$4f4" : isSpecGhost ? "\\$48f" : "") + g.Nickname);
 
